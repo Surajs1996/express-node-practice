@@ -2,55 +2,133 @@ const express = require("express");
 const connectDb = require("./config/database");
 const User = require("./models/user");
 
+const validator = require("validator");
+
+const validateSignUpdata = require("./validate/validate");
+
+const bcrypt = require("bcrypt");
+
 const app = express();
 
 const port = 7777;
 
 app.use(express.json());
 
-app.post("/signUp", async(req,res)=>{
-    const user = new User(req.body)
+app.post("/signUp", async (req, res) => {
 
-    try{
+    validateSignUpdata(req);
+    const {firstName, lastName, emailId, password} = req.body;
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = new User({
+        firstName,
+        lastName,
+        emailId, 
+        password : passwordHash
+    });
+
+    try {
         await user.save();
         res.send("user saved successfully")
 
-    } catch(err){
-        res.status(400).send("Error Saving the user: " +err.message)
+    } catch (err) {
+        res.status(400).send("Error Saving the user: " + err.message)
     }
 });
 
-app.get("/user", async(req, res)=>{
+app.post("/login", async(req,res)=>{
+
+    try {
+    const {emailId, password} = req.body;
+
+    if(!emailId || !validator.isEmail(emailId)){
+        throw new Error("Invalid credentials");
+    };
+    
+    const user = await User.findOne({emailId});
+
+    if(!user){
+        throw new Error("user not found");
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if(isValidPassword){
+        res.send("Login successfull");
+    } else {
+     res.status(404).send("Invalid credentials");
+    }
+    } catch (error) {
+        res.status(400).send(error.message);
+    }
+})
+
+app.get("/user", async (req, res) => {
     const userEmail = req.body.emailId;
-    try{
+    try {
         console.log(userEmail);
-        const user = await User.findOne({emailId : userEmail});
-        if(!user){
+        const user = await User.findOne({ emailId: userEmail });
+        if (!user) {
             res.status(400).send("User not found");
-        } else{
+        } else {
             res.send(user);
         }
-    }catch(err){
+    } catch (err) {
         res.status(400).send("Somwthing went wrong")
     }
 });
 
-app.get("/feed", async (req,res)=>{
-    try{
+app.get("/feed", async (req, res) => {
+    try {
         const feed = await User.find({});
-        if(!feed){
+        if (!feed) {
             res.status(204).send("No feeds")
         } else {
             res.send(feed)
         }
-    } catch(err){
+    } catch (err) {
         res.status(400).send("Something went wrong");
     }
-})
+});
 
-connectDb().then(()=>{
+app.delete("/user", async (req, res) => {
+    try {
+        const email = req.body.emailId;
+        const deleteUser = await User.findOneAndDelete({ emailId: email });
+        res.send("user deleted successfully : ", deleteUser.firstname);
+
+    } catch (err) {
+        res.status(400).send("Somwthing went wrong");
+    }
+});
+
+app.patch("/user/:emailId", async (req, res) => {
+    try {
+        const email = req.params.emailId;
+        
+        if(!email){
+            throw new Error("Email id not found"); 
+        }
+
+        if(req.body.skills > 10){
+            throw new Error("Skills must not be greater than 10 ");
+        }
+
+        const updateUser = await User.findOneAndUpdate({ emailId: email }, req.body, {
+            returnDocument: "after",
+            runValidators: true
+        });
+
+        res.send(updateUser);
+    } catch (error) {
+        res.status(400).send(error.message);
+    };
+});
+
+connectDb().then(() => {
     console.log("Database connected successfully");
-    app.listen(port, ()=>{
+    app.listen(port, () => {
         console.log("server is successfully listening on port ", port);
     })
 })
