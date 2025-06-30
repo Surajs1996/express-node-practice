@@ -8,24 +8,28 @@ const validateSignUpdata = require("./validate/validate");
 
 const bcrypt = require("bcrypt");
 
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
+
 const app = express();
 
 const port = 7777;
 
 app.use(express.json());
+app.use(cookieParser());
 
 app.post("/signUp", async (req, res) => {
 
     validateSignUpdata(req);
-    const {firstName, lastName, emailId, password} = req.body;
+    const { firstName, lastName, emailId, password } = req.body;
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = new User({
         firstName,
         lastName,
-        emailId, 
-        password : passwordHash
+        emailId,
+        password: passwordHash
     });
 
     try {
@@ -37,30 +41,65 @@ app.post("/signUp", async (req, res) => {
     }
 });
 
-app.post("/login", async(req,res)=>{
+app.post("/login", async (req, res) => {
 
     try {
-    const {emailId, password} = req.body;
+        const { emailId, password } = req.body;
 
-    if(!emailId || !validator.isEmail(emailId)){
-        throw new Error("Invalid credentials");
-    };
-    
-    const user = await User.findOne({emailId});
+        if (!emailId || !validator.isEmail(emailId)) {
+            throw new Error("Invalid credentials");
+        };
 
-    if(!user){
-        throw new Error("user not found");
-    }
+        const user = await User.findOne({ emailId });
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!user) {
+            throw new Error("user not found");
+        }
 
-    if(isValidPassword){
-        res.send("Login successfull");
-    } else {
-     res.status(404).send("Invalid credentials");
-    }
+        const isValidPassword = await bcrypt.compare(password, user.password);
+
+        if (isValidPassword) {
+            const token = await jwt.sign({ emailId: emailId }, "NodeBackend$7410");
+
+            res.cookie("token", token);
+
+            res.send("Login successfull");
+        } else {
+            res.status(404).send("Invalid credentials");
+        }
     } catch (error) {
         res.status(400).send(error.message);
+    }
+});
+
+app.get("/profile", async (req, res) => {
+    try {
+        const cookie = req.cookies;
+
+        const { token } = cookie;
+
+        if (!token) {
+            throw new Error("token is not valid");
+        }
+
+        const decodedToken = await jwt.verify(token, "NodeBackend$7410");
+
+        const { emailId } = decodedToken;
+
+        if (!emailId) {
+            throw new Error("EmailId not valid");
+        }
+
+        const user = await User.findOne({ emailId: emailId });
+
+        if (!user) {
+            throw new Error("User not found");
+        }
+
+        res.send(user);
+
+    } catch (error) {       
+        res.status(400).send(error.message)
     }
 })
 
@@ -92,6 +131,7 @@ app.get("/feed", async (req, res) => {
     }
 });
 
+
 app.delete("/user", async (req, res) => {
     try {
         const email = req.body.emailId;
@@ -106,12 +146,12 @@ app.delete("/user", async (req, res) => {
 app.patch("/user/:emailId", async (req, res) => {
     try {
         const email = req.params.emailId;
-        
-        if(!email){
-            throw new Error("Email id not found"); 
+
+        if (!email) {
+            throw new Error("Email id not found");
         }
 
-        if(req.body.skills > 10){
+        if (req.body.skills > 10) {
             throw new Error("Skills must not be greater than 10 ");
         }
 
